@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import re
 import shutil
 import traceback
@@ -86,8 +87,9 @@ def download_one(
     media_format: str,
     resolution: str,
     log: Callable[[str], None],
-) -> tuple[str, bool, str]:
+) -> tuple[str, bool, str, str | None]:
     title_holder: dict[str, str] = {"title": url}
+    path_holder: dict[str, str | None] = {"path": None}
 
     def hook(d: dict) -> None:
         status = d.get("status")
@@ -96,10 +98,12 @@ def download_one(
             title_holder["title"] = info["title"]
         if status == "downloading":
             pct = d.get("_percent_str") or ""
-            speed = d.get("_speed_str") or ""
-            log(f"↓ {title_holder['title'][:60]} — {pct.strip()} {speed.strip()}".strip())
+            log(f"{title_holder['title'][:70]} · {pct.strip()}")
         elif status == "finished":
-            log(f"… processando: {title_holder['title'][:70]}")
+            fp = d.get("filename")
+            if fp:
+                path_holder["path"] = str(fp)
+            log(f"Processando {title_holder['title'][:70]}")
 
     opts = build_ydl_opts(
         out_dir=out_dir,
@@ -111,15 +115,62 @@ def download_one(
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=True)
             if info is None:
-                return url, False, "Falha ao obter informações"
+                return url, False, "Falha ao obter informações", None
             if "entries" in info:
                 entries = [e for e in (info.get("entries") or []) if e]
                 name = info.get("title") or url
-                return name, True, f"playlist/lote: {len(entries)} item(ns)"
+                return name, True, f"{len(entries)} item(ns)", path_holder["path"]
             name = info.get("title") or title_holder["title"]
-            return name, True, "ok"
+            path = path_holder["path"]
+            if not path:
+                try:
+                    path = ydl.prepare_filename(info)
+                    if media_format.startswith("MP3"):
+                        path = str(Path(path).with_suffix(".mp3"))
+                except Exception:  # noqa: BLE001
+                    path = None
+            return name, True, "ok", path
     except Exception as exc:  # noqa: BLE001
-        return title_holder["title"], False, str(exc)
+        return title_holder["title"], False, str(exc), None
+
+
+def loading_html(title: str, subtitle: str) -> str:
+    return f"""
+<div class="yt-loading">
+  <div class="yt-spinner" aria-hidden="true"></div>
+  <p class="yt-loading-title">{html.escape(title)}</p>
+  <p class="yt-loading-sub">{html.escape(subtitle)}</p>
+</div>
+"""
+
+
+def results_html(items: list[dict], out_dir: Path, ok: int, fail: int) -> str:
+    rows = []
+    for item in items:
+        cls = "is-ok" if item["ok"] else "is-fail"
+        mark = "✓" if item["ok"] else "×"
+        detail = item.get("path") or item.get("detail") or ""
+        rows.append(
+            f"""
+<li class="yt-item {cls}">
+  <span class="yt-mark">{mark}</span>
+  <div class="yt-item-body">
+    <strong>{html.escape(item['name'])}</strong>
+    <small>{html.escape(detail)}</small>
+  </div>
+</li>"""
+        )
+    summary = f"{ok} baixado(s)" + (f" · {fail} falha(s)" if fail else "")
+    return f"""
+<div class="yt-done">
+  <p class="yt-done-kicker">Concluído</p>
+  <h2 class="yt-done-title">{html.escape(summary)}</h2>
+  <p class="yt-done-sub">{html.escape(str(out_dir))}</p>
+  <ul class="yt-list">
+    {''.join(rows) if rows else '<li class="yt-item"><div class="yt-item-body"><strong>Nada baixado</strong></div></li>'}
+  </ul>
+</div>
+"""
 
 
 def run_batch(
@@ -130,73 +181,64 @@ def run_batch(
     workers: int,
     progress: gr.Progress = gr.Progress(track_tqdm=False),
 ):
-    from ui.theme import progress_html
-
+    """Yields: form_vis, loading_vis, loading_html, results_vis, results_html, run_btn."""
     busy_btn = gr.update(value="Baixando…", interactive=False, elem_classes=["batch-cta", "is-running"])
-    idle_btn = gr.update(value="Baixar tudo", interactive=True, elem_classes=["batch-cta"])
+    idle_btn = gr.update(value="Baixar", interactive=True, elem_classes=["batch-cta"])
 
-    def pack(log_text: str, result_text: str, frac: float, label: str, *, running: bool, done: bool = False, btn=None):
+    def show_loading(title: str, subtitle: str, *, btn=None):
         return (
-            log_text,
-            result_text,
-            progress_html(frac, label, running=running, done=done),
-            btn if btn is not None else (busy_btn if running else idle_btn),
+            gr.update(visible=False),
+            gr.update(visible=True),
+            loading_html(title, subtitle),
+            gr.update(visible=False),
+            "",
+            btn if btn is not None else busy_btn,
+        )
+
+    def show_error(message: str):
+        return (
+            gr.update(visible=False),
+            gr.update(visible=False),
+            "",
+            gr.update(visible=True),
+            results_html(
+                [{"name": "Não foi possível baixar", "ok": False, "detail": message, "path": None}],
+                Path(out_dir_str.strip() or DEFAULT_OUT),
+                0,
+                1,
+            ),
+            idle_btn,
         )
 
     if shutil.which("ffmpeg") is None:
-        yield pack(
-            "erro · ffmpeg não encontrado — brew install ffmpeg",
-            "",
-            0,
-            "erro",
-            running=False,
-            btn=idle_btn,
-        )
+        yield show_error("ffmpeg não encontrado — brew install ffmpeg")
         return
 
     urls = parse_urls(urls_text)
     if not urls:
-        yield pack("erro · cole pelo menos uma URL válida do YouTube", "", 0, "erro", running=False, btn=idle_btn)
+        yield show_error("Cole pelo menos uma URL válida do YouTube")
         return
 
     out_dir = Path(out_dir_str.strip() or DEFAULT_OUT).expanduser()
     try:
         out_dir.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
-        yield pack(f"erro · pasta inválida: {exc}", "", 0, "erro", running=False, btn=idle_btn)
+        yield show_error(f"Pasta inválida: {exc}")
         return
 
     workers = max(1, min(int(workers or 1), 5))
-    lines: list[str] = [
-        f"pasta     {out_dir}",
-        f"formato   {media_format} · resolução {resolution}",
-        f"fila      {len(urls)} url(s) · paralelo {workers}",
-        "─" * 44,
-    ]
-    results: list[str] = []
+    items: list[dict] = []
     ok = fail = done = 0
     total = len(urls)
-
-    def emit(frac: float, label: str, *, running: bool = True, finished: bool = False):
-        return pack(
-            "\n".join(lines),
-            "\n".join(results) if results else "aguardando…",
-            frac,
-            label,
-            running=running,
-            done=finished,
-            btn=idle_btn if finished else busy_btn,
-        )
-
-    yield emit(0.02, "iniciando fila…", running=True)
+    current_msg = "Preparando…"
 
     def log(msg: str) -> None:
-        if lines and lines[-1].startswith("↓ ") and msg.startswith("↓ "):
-            lines[-1] = msg
-        else:
-            lines.append(msg)
+        nonlocal current_msg
+        current_msg = msg
 
+    yield show_loading("Baixando", f"0/{total} · iniciando")
     progress(0, desc="Iniciando…")
+
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
             pool.submit(download_one, url, out_dir, media_format, resolution, log): url
@@ -204,22 +246,45 @@ def run_batch(
         }
         for fut in as_completed(futures):
             try:
-                name, success, detail = fut.result()
+                name, success, detail, path = fut.result()
             except Exception:  # noqa: BLE001
-                name, success, detail = futures[fut], False, traceback.format_exc(limit=2)
+                name, success, detail, path = futures[fut], False, traceback.format_exc(limit=2), None
             done += 1
             if success:
                 ok += 1
-                lines.append(f"ok  {name} — {detail}")
-                results.append(f"ok  {name}")
             else:
                 fail += 1
-                lines.append(f"falha  {name} — {detail}")
-                results.append(f"falha  {name}: {detail}")
+            items.append(
+                {
+                    "name": name,
+                    "ok": success,
+                    "detail": detail,
+                    "path": path,
+                }
+            )
             frac = done / total
             progress(frac, desc=f"{done}/{total}")
-            yield emit(frac, f"{done}/{total} concluídos · {ok} ok · {fail} falha(s)", running=True)
+            yield show_loading(
+                "Baixando",
+                f"{done}/{total} · {current_msg or name[:48]}",
+            )
 
-    lines.append("─" * 44)
-    lines.append(f"feito · {ok} ok · {fail} falha(s)\n{out_dir}")
-    yield emit(1.0, f"concluído · {ok} ok · {fail} falha(s)", running=False, finished=True)
+    yield (
+        gr.update(visible=False),
+        gr.update(visible=False),
+        "",
+        gr.update(visible=True),
+        results_html(items, out_dir, ok, fail),
+        idle_btn,
+    )
+
+
+def show_form_again():
+    return (
+        gr.update(visible=True),
+        gr.update(visible=False),
+        "",
+        gr.update(visible=False),
+        "",
+        gr.update(value="Baixar", interactive=True, elem_classes=["batch-cta"]),
+    )

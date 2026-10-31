@@ -19,7 +19,7 @@ Abre [http://127.0.0.1:7860](http://127.0.0.1:7860).
 - Python 3.12 (`brew install python@3.12`)
 - `ffmpeg` (`brew install ffmpeg`) — YouTube
 - Opcional Apple Music: ver [APPLE_MUSIC.md](APPLE_MUSIC.md)
-- Opcional IA / Four Seasons: `brew install ollama && ollama serve`
+- Opcional IA / Four Seasons: `brew install ollama` (o app sobe com `brew services start ollama` se estiver offline)
 - Opcional Stems: pesos do Demucs baixam na 1ª execução (PyTorch)
 
 ## Docs

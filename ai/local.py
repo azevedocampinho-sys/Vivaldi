@@ -5,12 +5,20 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Any, Callable, Iterator
 
 DEFAULT_HOST = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+AUTO_START_OLLAMA = os.getenv("VIVALDI_AUTO_START_OLLAMA", "1").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
 
 # Escada de modelos estáveis e leves o bastante para M4 (tag pinada > latest solto).
 # O sistema sobe na lista se o preferido não existir; sempre revalida digest no registry.
@@ -63,6 +71,91 @@ def ollama_available(host: str = DEFAULT_HOST) -> bool:
             return resp.status == 200
     except Exception:  # noqa: BLE001
         return False
+
+
+def _wait_ollama(host: str, timeout: float) -> bool:
+    deadline = time.monotonic() + max(0.5, timeout)
+    while time.monotonic() < deadline:
+        if ollama_available(host):
+            return True
+        time.sleep(0.4)
+    return ollama_available(host)
+
+
+def start_ollama_service(
+    *,
+    host: str = DEFAULT_HOST,
+    wait_seconds: float = 25.0,
+) -> tuple[bool, str]:
+    """Sobe o Ollama via Homebrew e espera a API local responder."""
+    if ollama_available(host):
+        return True, "Ollama já estava online"
+
+    brew = shutil.which("brew")
+    ollama_bin = shutil.which("ollama")
+    steps: list[str] = []
+
+    if brew:
+        try:
+            proc = subprocess.run(
+                [brew, "services", "start", "ollama"],
+                capture_output=True,
+                text=True,
+                timeout=45,
+                check=False,
+            )
+            out = ((proc.stdout or "") + (proc.stderr or "")).strip()
+            steps.append(
+                f"brew services start ollama · exit {proc.returncode}"
+                + (f" · {out}" if out else "")
+            )
+        except Exception as exc:  # noqa: BLE001
+            steps.append(f"brew services start falhou · {exc}")
+    else:
+        steps.append("brew não encontrado no PATH")
+
+    if _wait_ollama(host, wait_seconds * 0.55):
+        return True, "Ollama iniciado · " + " · ".join(steps)
+
+    # Fallback: daemon direto (sem services), se o binário existir
+    if ollama_bin:
+        try:
+            subprocess.Popen(  # noqa: S603
+                [ollama_bin, "serve"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            steps.append("fallback: ollama serve em background")
+        except Exception as exc:  # noqa: BLE001
+            steps.append(f"ollama serve falhou · {exc}")
+
+        if _wait_ollama(host, wait_seconds * 0.45):
+            return True, "Ollama iniciado · " + " · ".join(steps)
+
+    if not ollama_bin and not brew:
+        return False, "Ollama offline · instale com: brew install ollama"
+    return False, "Ollama offline após tentar start · " + " · ".join(steps)
+
+
+def ensure_ollama_running(
+    host: str = DEFAULT_HOST,
+    *,
+    auto_start: bool | None = None,
+) -> tuple[bool, str]:
+    """Garante API do Ollama no ar; se cair, tenta `brew services start ollama`."""
+    if ollama_available(host):
+        return True, "online"
+    if auto_start is None:
+        auto_start = AUTO_START_OLLAMA
+    if not auto_start:
+        hint = (
+            "brew install ollama && brew services start ollama"
+            if not shutil.which("ollama")
+            else "brew services start ollama"
+        )
+        return False, f"offline · {hint}"
+    return start_ollama_service(host=host)
 
 
 def ollama_version(host: str = DEFAULT_HOST) -> str:
@@ -255,15 +348,16 @@ def ensure_stable_model(
     on_progress: ProgressCb | None = None,
 ) -> EnsureResult:
     """Garante modelo estável local e atualiza se o registry tiver digest novo."""
-    if not ollama_available(host):
-        hint = "brew install ollama && ollama serve" if not shutil.which("ollama") else "ollama serve"
+    online, boot_msg = ensure_ollama_running(host)
+    if not online:
         return EnsureResult(
             model=normalize_name(model or DEFAULT_MODEL),
             updated=False,
             pulled=False,
             online=False,
-            message=f"Ollama offline · {hint}",
+            message=f"Ollama offline · {boot_msg}",
         )
+    started_now = "iniciado" in boot_msg.lower()
 
     target = normalize_name(model or resolve_preferred_model(host))
     before = local_digest(target, host)
@@ -281,12 +375,16 @@ def ensure_stable_model(
             needs = True
             reason = "checando via pull"
         elif digests_match(before, rem):
+            prefix = "serviço religado · " if started_now else ""
             return EnsureResult(
                 model=target,
                 updated=False,
                 pulled=False,
                 online=True,
-                message=f"{target} · já na versão estável atual (ollama {ollama_version(host)})",
+                message=(
+                    f"{prefix}{target} · já na versão estável atual "
+                    f"(ollama {ollama_version(host)})"
+                ),
             )
         else:
             needs = True
@@ -326,9 +424,13 @@ def ensure_stable_model(
     )
 
 
-def status_report(host: str = DEFAULT_HOST) -> str:
-    if not ollama_available(host):
-        return "IA local · ollama offline"
+def status_report(host: str = DEFAULT_HOST, *, auto_start: bool = False) -> str:
+    # Por padrão não sobe o serviço aqui (evita atrasar o boot do app);
+    # ensure_stable_model / chat já chamam brew services start sob falha.
+    online, boot_msg = ensure_ollama_running(host, auto_start=auto_start)
+    if not online:
+        return f"IA local · ollama offline · {boot_msg}"
+    boot_note = " · religado agora" if "iniciado" in boot_msg.lower() else ""
     models = list_models(host)
     preferred = resolve_preferred_model(host)
     upd = is_update_available(preferred, host)
@@ -340,7 +442,7 @@ def status_report(host: str = DEFAULT_HOST) -> str:
         flag = "registry indisponível"
     names = ", ".join(models[:5]) if models else "(nenhum)"
     return (
-        f"IA local · ollama {ollama_version(host)} online · "
+        f"IA local · ollama {ollama_version(host)} online{boot_note} · "
         f"preferido {preferred} ({flag}) · instalados: {names}"
     )
 
@@ -353,10 +455,19 @@ def chat(
     temperature: float = 0.7,
     auto_ensure: bool = True,
 ) -> str:
-    if auto_ensure and ollama_available(host):
-        # só puxa se faltar localmente; updates agendados ficam no ensure explícito
-        if local_digest(model, host) is None:
+    if auto_ensure:
+        online, boot_msg = ensure_ollama_running(host)
+        if online and local_digest(model, host) is None:
             ensure_stable_model(model, host=host, auto_update=True)
+        elif not online:
+            return (
+                "IA local indisponível.\n"
+                f"{boot_msg}\n"
+                "Se ainda falhar no Terminal:\n"
+                "  brew install ollama\n"
+                "  brew services start ollama\n"
+                f"  ollama pull {model}"
+            )
 
     payload: dict[str, Any] = {
         "model": model,
@@ -364,21 +475,33 @@ def chat(
         "stream": False,
         "options": {"temperature": temperature},
     }
-    req = urllib.request.Request(
-        f"{host}/api/chat",
-        data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
+
+    def _chat_once() -> str:
+        req = urllib.request.Request(
+            f"{host}/api/chat",
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
         with urllib.request.urlopen(req, timeout=180) as resp:
             data = json.loads(resp.read().decode())
         return (data.get("message") or {}).get("content") or "(sem resposta)"
+
+    try:
+        return _chat_once()
     except urllib.error.URLError as exc:
+        online, boot_msg = ensure_ollama_running(host)
+        if online:
+            try:
+                return _chat_once()
+            except Exception as retry_exc:  # noqa: BLE001
+                return f"Erro na IA local após religar Ollama: {retry_exc}"
         return (
-            "IA local indisponível. No Terminal:\n"
+            "IA local indisponível.\n"
+            f"{boot_msg}\n"
+            "No Terminal:\n"
             "  brew install ollama\n"
-            "  ollama serve\n"
+            "  brew services start ollama\n"
             f"  ollama pull {model}\n"
             f"Detalhe: {exc}"
         )

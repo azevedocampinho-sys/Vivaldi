@@ -15,5 +15,7 @@ downloads/*
 .cache/
 stems_out/
 four_seasons_out/
+# keep hub art tracked
+!static/hub/*.jpg
 *.wav
 !sample_data/**

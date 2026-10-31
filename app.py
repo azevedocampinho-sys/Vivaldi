@@ -3,12 +3,15 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import gradio as gr
+from dotenv import load_dotenv
 
 from ai import local as llm
-from apple_music import ai_studio, demo, duplicates, filters, mutations
+from apple_music import ai_studio, duplicates, filters, mutations
+from apple_music import demo as am_demo
 from apple_music.client import AppleMusicClient, Playlist
 from four_seasons import instruments as fs_instruments
 from four_seasons import studio as fs
@@ -18,16 +21,23 @@ from youtube import downloader as yt
 
 ROOT = Path(__file__).resolve().parent
 AUTH_HTML = ROOT / "static" / "musickit_auth.html"
+load_dotenv(ROOT / ".env", override=True)
 
 # In-memory session playlist (demo or live)
 _SESSION: dict[str, Playlist | None] = {"playlist": None}
 
 
-def _hero(_subtitle: str = "") -> str:
+def _hero(*, back_id: str | None = None) -> str:
+    back = (
+        f'<button type="button" class="batch-back" data-back="{back_id}" aria-label="Voltar ao hub">← Hub</button>'
+        if back_id
+        else '<span class="batch-back-spacer" aria-hidden="true"></span>'
+    )
     return f"""
 <div class="batch-shell">
   <header class="batch-hero">
     <div class="batch-top">
+      {back}
       <h1 class="batch-mark">Vivaldi</h1>
       <div class="batch-chips">
         <div class="batch-chip"><i></i> No seu Mac</div>
@@ -51,21 +61,33 @@ HUB_HTML = f"""
     </div>
   </header>
   <div class="hub-grid">
-    <div class="hub-portal">
-      <h2 class="hub-title">YouTube</h2>
-      <p class="hub-copy">Downloads em lote com MP4, MP3 e resolução sob controle.</p>
+    <div class="hub-portal" data-hub="hub-go-yt" role="button" tabindex="0">
+      <div class="hub-portal-art" aria-hidden="true"></div>
+      <div class="hub-portal-content">
+        <h2 class="hub-title">YouTube</h2>
+        <span class="hub-arrow" aria-hidden="true">→</span>
+      </div>
     </div>
-    <div class="hub-portal">
-      <h2 class="hub-title">Apple Music</h2>
-      <p class="hub-copy">Playlists, duplicatas, filtros e IA local — via API oficial.</p>
+    <div class="hub-portal" data-hub="hub-go-am" role="button" tabindex="0">
+      <div class="hub-portal-art" aria-hidden="true"></div>
+      <div class="hub-portal-content">
+        <h2 class="hub-title">Apple Music</h2>
+        <span class="hub-arrow" aria-hidden="true">→</span>
+      </div>
     </div>
-    <div class="hub-portal">
-      <h2 class="hub-title">Stems</h2>
-      <p class="hub-copy">HTDemucs no M4: instrumentais e stems para edição de vídeo.</p>
+    <div class="hub-portal" data-hub="hub-go-st" role="button" tabindex="0">
+      <div class="hub-portal-art" aria-hidden="true"></div>
+      <div class="hub-portal-content">
+        <h2 class="hub-title">Stems</h2>
+        <span class="hub-arrow" aria-hidden="true">→</span>
+      </div>
     </div>
-    <div class="hub-portal">
-      <h2 class="hub-title">Four Seasons</h2>
-      <p class="hub-copy">Crie músicas em 4 estações — com suas playlists Apple Music e IA no M4.</p>
+    <div class="hub-portal" data-hub="hub-go-fs" role="button" tabindex="0">
+      <div class="hub-portal-art" aria-hidden="true"></div>
+      <div class="hub-portal-content">
+        <h2 class="hub-title">Four Seasons</h2>
+        <span class="hub-arrow" aria-hidden="true">→</span>
+      </div>
     </div>
   </div>
 </div>
@@ -146,7 +168,7 @@ def ensure_ai_model(current_model: str):
 def refresh_playlists(dev_token: str, user_token: str, storefront: str):
     client = AppleMusicClient(dev_token or None, user_token or None, storefront or "br")
     if not client.configured:
-        choices = demo.demo_playlist_choices()
+        choices = am_demo.demo_playlist_choices()
         return gr.update(choices=choices, value=choices[0][1]), "demo · playlist de exemplo carregável"
     try:
         choices = client.list_library_playlists()
@@ -154,7 +176,7 @@ def refresh_playlists(dev_token: str, user_token: str, storefront: str):
             return gr.update(choices=[], value=None), "nenhuma playlist na biblioteca"
         return gr.update(choices=choices, value=choices[0][1]), f"{len(choices)} playlist(s) · cache gentil"
     except Exception as exc:  # noqa: BLE001
-        choices = demo.demo_playlist_choices()
+        choices = am_demo.demo_playlist_choices()
         return (
             gr.update(choices=choices, value=choices[0][1]),
             f"falha API ({exc}) — caindo no demo",
@@ -165,7 +187,7 @@ def load_playlist(playlist_id: str, dev_token: str, user_token: str, storefront:
     client = AppleMusicClient(dev_token or None, user_token or None, storefront or "br")
     try:
         if not client.configured or (playlist_id or "").startswith("demo."):
-            pl = demo.load_demo_playlist()
+            pl = am_demo.load_demo_playlist()
         else:
             pl = client.get_library_playlist_tracks(playlist_id)
         _SESSION["playlist"] = pl
@@ -281,45 +303,51 @@ with gr.Blocks(title="Vivaldi") as demo:
     # —— HUB ——
     with gr.Column(visible=True, elem_classes=["batch-shell"]) as hub_view:
         gr.HTML(HUB_HTML)
-        with gr.Row():
-            btn_yt = gr.Button("YouTube", variant="primary", elem_classes=["batch-cta"])
-            btn_am = gr.Button("Apple Music", variant="primary", elem_classes=["batch-cta"])
-            btn_st = gr.Button("Stems", variant="primary", elem_classes=["batch-cta"])
-            btn_fs = gr.Button("Four Seasons", variant="primary", elem_classes=["batch-cta"])
-        gr.HTML(
-            '<p class="batch-foot">Privado por padrão. Apple Music pela API oficial. '
-            "Stems, Four Seasons e IA rodam localmente no Apple Silicon.</p>"
-        )
+        with gr.Row(elem_classes=["hub-nav-row"]):
+            btn_yt = gr.Button("YouTube", elem_id="hub-go-yt", elem_classes=["hub-nav-btn"])
+            btn_am = gr.Button("Apple Music", elem_id="hub-go-am", elem_classes=["hub-nav-btn"])
+            btn_st = gr.Button("Stems", elem_id="hub-go-st", elem_classes=["hub-nav-btn"])
+            btn_fs = gr.Button("Four Seasons", elem_id="hub-go-fs", elem_classes=["hub-nav-btn"])
 
     # —— YOUTUBE ——
-    with gr.Column(visible=False) as yt_view:
+    with gr.Column(visible=False, elem_classes=["yt-studio"]) as yt_view:
         with gr.Row(elem_classes=["back-row"]):
-            back_yt = gr.Button("← Hub", scale=0)
-        gr.HTML(_hero("Baixe vários vídeos de uma vez. Formato, resolução e pasta — sob o seu controle."))
-        with gr.Group(elem_classes=["batch-panel"]):
-            urls = gr.Textbox(
-                label="Links",
-                lines=8,
-                placeholder="Cole um link por linha. Playlists também funcionam.",
-            )
-        with gr.Row():
-            media_format = gr.Radio(yt.FORMAT_CHOICES, value="MP4 (vídeo)", label="Formato")
-            resolution = gr.Dropdown(yt.RESOLUTION_CHOICES, value="1080", label="Resolução máx.")
-            workers = gr.Slider(1, 5, value=2, step=1, label="Paralelo")
-        out_dir = gr.Textbox(label="Pasta de saída", value=str(yt.DEFAULT_OUT))
-        run_btn = gr.Button("Baixar", variant="primary", elem_classes=["batch-cta"])
-        progress_panel = gr.HTML(
-            progress_html(0, "Pronto", running=False),
-            elem_classes=["batch-progress-wrap"],
-        )
-        with gr.Row():
-            log_box = gr.Textbox(label="Log", lines=12, interactive=False, elem_classes=["batch-output"])
-            result_box = gr.Textbox(label="Resultado", lines=12, interactive=False, elem_classes=["batch-output"])
+            back_yt = gr.Button("← Hub", elem_id="back-yt", elem_classes=["hub-nav-btn"])
+        gr.HTML(_hero(back_id="back-yt"))
+
+        with gr.Column(visible=True, elem_classes=["yt-form"]) as yt_form:
+            with gr.Group(elem_classes=["batch-panel"]):
+                urls = gr.Textbox(
+                    label="Links",
+                    lines=8,
+                    placeholder="Cole um link por linha. Playlists também funcionam.",
+                )
+            with gr.Group(elem_classes=["yt-controls"]):
+                with gr.Row():
+                    media_format = gr.Radio(
+                        yt.FORMAT_CHOICES, value="MP4 (vídeo)", label="Formato", scale=2
+                    )
+                    resolution = gr.Dropdown(
+                        yt.RESOLUTION_CHOICES, value="1080", label="Resolução máx.", scale=1
+                    )
+                    workers = gr.Slider(1, 5, value=2, step=1, label="Paralelo", scale=2)
+                out_dir = gr.Textbox(label="Pasta de saída", value=str(yt.DEFAULT_OUT))
+            run_btn = gr.Button("Baixar", variant="primary", elem_classes=["batch-cta"])
+
+        with gr.Column(visible=False, elem_classes=["yt-stage"]) as yt_loading:
+            yt_loading_html = gr.HTML(yt.loading_html("Baixando", "Preparando…"))
+
+        with gr.Column(visible=False, elem_classes=["yt-stage"]) as yt_results:
+            yt_results_html = gr.HTML("")
+            yt_again = gr.Button("Nova descarga", elem_classes=["batch-cta"])
+
+        yt_flow_outs = [yt_form, yt_loading, yt_loading_html, yt_results, yt_results_html, run_btn]
         run_btn.click(
             fn=yt.run_batch,
             inputs=[urls, media_format, resolution, out_dir, workers],
-            outputs=[log_box, result_box, progress_panel, run_btn],
+            outputs=yt_flow_outs,
         )
+        yt_again.click(fn=yt.show_form_again, outputs=yt_flow_outs)
 
     # —— APPLE MUSIC ——
     AM_SECTIONS = [
@@ -337,39 +365,47 @@ with gr.Blocks(title="Vivaldi") as demo:
         "Conexão": "Tokens oficiais da Apple e status do Ollama.",
     }
 
+    AM_NEEDS_PLAYLIST = {"Playlist e duplicatas", "Filtros", "IA local"}
+
     def am_switch_section(section: str):
         section = section or AM_SECTIONS[0]
         blurb = AM_BLURBS.get(section, "")
         flags = [section == s for s in AM_SECTIONS]
         return (
             f'<p class="am-command-sub">{blurb}</p>',
+            gr.update(visible=section in AM_NEEDS_PLAYLIST),
             *(gr.update(visible=f) for f in flags),
         )
 
-    with gr.Column(visible=False) as am_view:
+    with gr.Column(visible=False, elem_classes=["am-studio"]) as am_view:
         with gr.Row(elem_classes=["back-row"]):
-            back_am = gr.Button("← Hub", scale=0)
-        gr.HTML(_hero("Organize playlists com a API oficial. Duplicatas, filtros e IA — tudo no Mac."))
+            back_am = gr.Button("← Hub", elem_id="back-am", elem_classes=["hub-nav-btn"])
+        gr.HTML(_hero(back_id="back-am"))
 
         with gr.Group(elem_classes=["am-command"]):
             gr.HTML('<p class="am-command-title">Área</p>')
             am_section_blurb = gr.HTML(
                 f'<p class="am-command-sub">{AM_BLURBS[AM_SECTIONS[0]]}</p>'
             )
-            am_section = gr.Dropdown(
-                label="Área",
+            am_section = gr.Radio(
                 choices=AM_SECTIONS,
                 value=AM_SECTIONS[0],
+                label="Área",
+                show_label=False,
+                elem_classes=["am-area-radio"],
                 interactive=True,
             )
 
-        with gr.Group(elem_classes=["am-playlist-strip"]):
-            with gr.Row():
-                am_playlist = gr.Dropdown(label="Playlist ativa", choices=[], value=None, scale=3)
-                am_refresh = gr.Button("Atualizar lista", scale=1)
-                am_load = gr.Button("Abrir", variant="primary", scale=1)
+        with gr.Column(visible=True, elem_classes=["am-playlist-wrap"]) as am_playlist_wrap:
+            with gr.Group(elem_classes=["am-playlist-strip"]):
+                with gr.Row():
+                    am_playlist = gr.Dropdown(
+                        label="Playlist ativa", choices=[], value=None, scale=3
+                    )
+                    am_refresh = gr.Button("Atualizar lista", scale=1)
+                    am_load = gr.Button("Abrir", variant="primary", scale=1)
 
-        # —— painéis ——
+        # —— painéis (só a área selecionada fica visível) ——
         with gr.Column(visible=True, elem_classes=["am-section-panel"]) as am_panel_playlist:
             am_alert = gr.Textbox(label="Alerta de duplicatas", interactive=False)
             am_dup_report = gr.Textbox(
@@ -447,15 +483,32 @@ with gr.Blocks(title="Vivaldi") as demo:
 
         with gr.Column(visible=False, elem_classes=["am-section-panel"]) as am_panel_conn:
             gr.Markdown(
-                f"1. Gere o developer token: `python scripts/make_developer_token.py …`  \n"
-                f"2. Autorize o user token: abra `{AUTH_HTML}` no Safari  \n"
-                "3. Cole abaixo ou no arquivo `.env`  \n"
-                "**Sem tokens = modo demo** (sem chamadas à Apple)."
+                "Tokens preferencialmente no `.env`. Campos vazios usam o `.env` automaticamente.  \n"
+                "Safari (user token): "
+                "[http://127.0.0.1:7860/am-auth/musickit_auth.html]"
+                "(http://127.0.0.1:7860/am-auth/musickit_auth.html)  \n"
+                "**Sem tokens = modo demo** (playlist de exemplo, sem gravar na Apple)."
             )
-            am_dev = gr.Textbox(label="Developer token", type="password")
-            am_user = gr.Textbox(label="Music User Token", type="password")
-            am_sf = gr.Textbox(label="Storefront", value="br")
-            am_status = gr.Textbox(label="Status", interactive=False, lines=3)
+            am_dev = gr.Textbox(
+                label="Developer token",
+                type="password",
+                value=os.getenv("APPLE_MUSIC_DEVELOPER_TOKEN", ""),
+            )
+            am_user = gr.Textbox(
+                label="Music User Token",
+                type="password",
+                value=os.getenv("APPLE_MUSIC_USER_TOKEN", ""),
+            )
+            am_sf = gr.Textbox(
+                label="Storefront",
+                value=os.getenv("APPLE_MUSIC_STOREFRONT", "br") or "br",
+            )
+            am_status = gr.Textbox(
+                label="Status",
+                interactive=False,
+                lines=3,
+                value=apple_connection_status("", "", os.getenv("APPLE_MUSIC_STOREFRONT", "br") or "br"),
+            )
             am_check = gr.Button("Checar conexão", variant="primary")
 
         am_section.change(
@@ -463,6 +516,7 @@ with gr.Blocks(title="Vivaldi") as demo:
             am_section,
             [
                 am_section_blurb,
+                am_playlist_wrap,
                 am_panel_playlist,
                 am_panel_filters,
                 am_panel_ai,
@@ -509,13 +563,8 @@ with gr.Blocks(title="Vivaldi") as demo:
     # —— STEMS (HTDemucs) ——
     with gr.Column(visible=False) as stems_view:
         with gr.Row(elem_classes=["back-row"]):
-            back_st = gr.Button("← Hub", scale=0)
-        gr.HTML(
-            _hero(
-                "Separe voz, baixo, bateria e outros com HTDemucs. "
-                "Ideal para instrumentais e edição de vídeo."
-            )
-        )
+            back_st = gr.Button("← Hub", elem_id="back-st", elem_classes=["hub-nav-btn"])
+        gr.HTML(_hero(back_id="back-st"))
         gr.Markdown(f"**Status:** {stems.status_line()}")
         stem_file = gr.Audio(
             label="Áudio de entrada",
@@ -607,9 +656,8 @@ with gr.Blocks(title="Vivaldi") as demo:
 
     with gr.Column(visible=False) as fs_view:
         with gr.Row(elem_classes=["back-row"]):
-            back_fs = gr.Button("← Hub", scale=0)
-        gr.HTML(_hero())
-        gr.HTML(FS_SEASONS_HTML)
+            back_fs = gr.Button("← Hub", elem_id="back-fs", elem_classes=["hub-nav-btn"])
+        gr.HTML(_hero(back_id="back-fs"))
         fs_status = gr.Textbox(
             label="Projeto",
             value=fs.project_status(),
@@ -620,10 +668,12 @@ with gr.Blocks(title="Vivaldi") as demo:
         with gr.Group(elem_classes=["am-command"]):
             gr.HTML('<p class="am-command-title">Estação</p>')
             fs_blurb = gr.HTML(f'<p class="am-command-sub">{FS_BLURBS[FS_SECTIONS[0]]}</p>')
-            fs_section = gr.Dropdown(
-                label="Estação",
+            fs_section = gr.Radio(
                 choices=FS_SECTIONS,
                 value=FS_SECTIONS[0],
+                label="Estação",
+                show_label=False,
+                elem_classes=["am-area-radio"],
                 interactive=True,
             )
 
@@ -770,6 +820,10 @@ with gr.Blocks(title="Vivaldi") as demo:
     btn_yt.click(show_youtube, outputs=nav_outs)
     btn_am.click(show_apple, outputs=nav_outs).then(
         ensure_ai_model, am_model, [am_model, am_ai_status]
+    ).then(
+        apple_connection_status, [am_dev, am_user, am_sf], am_status
+    ).then(
+        refresh_playlists, [am_dev, am_user, am_sf], [am_playlist, am_status]
     )
     btn_st.click(show_stems, outputs=nav_outs)
     btn_fs.click(show_four_seasons, outputs=nav_outs).then(
@@ -782,11 +836,27 @@ with gr.Blocks(title="Vivaldi") as demo:
 
 
 if __name__ == "__main__":
-    demo.queue().launch(
-        server_name="127.0.0.1",
-        server_port=7860,
-        inbrowser=True,
+    import uvicorn
+    from fastapi import FastAPI
+    from fastapi.responses import FileResponse
+    from fastapi.staticfiles import StaticFiles
+
+    # MusicKit JS não roda em file:// — auth page em localhost ao lado do Gradio
+    api = FastAPI()
+
+    @api.get("/am-auth/musickit_auth.html")
+    async def _musickit_auth_page():
+        return FileResponse(AUTH_HTML, media_type="text/html; charset=utf-8")
+
+    api.mount("/am-auth", StaticFiles(directory=str(ROOT / "static")), name="am-auth")
+
+    demo.queue()
+    app = gr.mount_gradio_app(
+        api,
+        demo,
+        path="/",
         theme=THEME,
         css=CSS,
         head=HEAD,
     )
+    uvicorn.run(app, host="127.0.0.1", port=7860, log_level="info")

@@ -40,13 +40,20 @@ python scripts/make_developer_token.py \
 Cole o JWT em `.env` como `APPLE_MUSIC_DEVELOPER_TOKEN=...`
 
 ## 3) Music User Token
-Abra no Safari:
-`static/musickit_auth.html`
+Com o Vivaldi rodando, abra **no Safari** (não use `file://`):
+
+`http://127.0.0.1:7860/am-auth/musickit_auth.html`
+
+```bash
+open -a Safari http://127.0.0.1:7860/am-auth/musickit_auth.html
+```
 
 Cole o developer token → **Autorizar com Apple** → copie o user token para
 `APPLE_MUSIC_USER_TOKEN=...`
 
 Sem user token, o app só lê demo / não grava.
+
+> `Can't find variable: MusicKit` = página aberta como arquivo local. Use o link localhost acima.
 
 ## 4) IA local no M4
 ```bash
