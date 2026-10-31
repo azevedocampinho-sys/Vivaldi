@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vivaldi · autorizar Apple Music</title>
+  <script src="https://js-cdn.music.apple.com/musickit/v3/applemusickit.js"></script>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0; min-height: 100vh; font-family: system-ui, sans-serif;
+      background: #0f0d0a; color: #ffffff; display: grid; place-items: center; padding: 24px;
+    }
+    .box {
+      width: min(520px, 100%); border: 1px solid rgba(255,255,255,.14);
+      border-radius: 14px; padding: 28px; background: #161412;
+    }
+    h1 { font-size: 1.4rem; margin: 0 0 8px; color: #ffffff; }
+    p { color: #d6d0c8; line-height: 1.55; }
+    code { color: #ffffff; }
+    label {
+      display: block; font-size: 12px; letter-spacing: .08em; text-transform: uppercase;
+      color: #d6d0c8; margin: 16px 0 6px; font-weight: 600;
+    }
+    input, textarea {
+      width: 100%; box-sizing: border-box; background: #0c0a08; color: #ffffff;
+      border: 1px solid rgba(255,255,255,.18); border-radius: 8px; padding: 10px 12px;
+      font: 13px ui-monospace, monospace;
+    }
+    button {
+      margin-top: 16px; width: 100%; border: 0; border-radius: 4px; padding: 14px;
+      background: #ff4700; color: #0f0d0a; font-weight: 800; letter-spacing: .04em;
+      text-transform: uppercase; cursor: pointer;
+    }
+    .ok { color: #9dffc8; font-size: 14px; margin-top: 10px; font-weight: 600; }
+    .err { color: #ff8a8a; font-size: 14px; margin-top: 10px; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>Autorizar Apple Music</h1>
+    <p>Usa só a API oficial (MusicKit). Cole o developer token JWT e autorize sua conta. Depois copie o <strong>Music User Token</strong> para o arquivo <code>.env</code> do Vivaldi.</p>
+    <label>Developer token</label>
+    <textarea id="dev" rows="4" placeholder="eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Li4ufQ..."></textarea>
+    <button id="go">Autorizar com Apple</button>
+    <label>Music User Token</label>
+    <textarea id="user" rows="3" readonly placeholder="aparece após autorizar"></textarea>
+    <div id="msg"></div>
+  </div>
+  <script>
+    const msg = document.getElementById('msg');
+    document.getElementById('go').onclick = async () => {
+      msg.className = '';
+      msg.textContent = 'Abrindo autorização…';
+      const token = document.getElementById('dev').value.trim();
+      if (!token) { msg.className = 'err'; msg.textContent = 'Cole o developer token.'; return; }
+      try {
+        await MusicKit.configure({
+          developerToken: token,
+          app: { name: 'Vivaldi', build: '1.0.0' }
+        });
+        const music = MusicKit.getInstance();
+        await music.authorize();
+        document.getElementById('user').value = music.musicUserToken || '';
+        msg.className = 'ok';
+        msg.textContent = 'Ok. Copie o Music User Token para APPLE_MUSIC_USER_TOKEN no .env';
+      } catch (e) {
+        msg.className = 'err';
+        msg.textContent = String(e && e.message ? e.message : e);
+      }
+    };
+  </script>
+</body>
+</html>

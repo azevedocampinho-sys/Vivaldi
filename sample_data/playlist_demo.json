@@ -1,0 +1,18 @@
+{
+  "id": "demo.playlist.1",
+  "name": "Demo — Noite Urbana",
+  "tracks": [
+    {"id": "t1", "name": "Blinding Lights", "artist": "The Weeknd", "album": "After Hours", "year": 2020, "genre": "Synth-pop", "duration_ms": 200040, "isrc": "USUG11904206"},
+    {"id": "t2", "name": "Save Your Tears", "artist": "The Weeknd", "album": "After Hours", "year": 2020, "genre": "Synth-pop", "duration_ms": 215627, "isrc": "USUG11904207"},
+    {"id": "t3", "name": "Blinding Lights", "artist": "The Weeknd", "album": "After Hours", "year": 2020, "genre": "Synth-pop", "duration_ms": 200040, "isrc": "USUG11904206"},
+    {"id": "t4", "name": "Levitating", "artist": "Dua Lipa", "album": "Future Nostalgia", "year": 2020, "genre": "Disco", "duration_ms": 203064, "isrc": "GBAHT1901298"},
+    {"id": "t5", "name": "Don't Start Now", "artist": "Dua Lipa", "album": "Future Nostalgia", "year": 2019, "genre": "Disco", "duration_ms": 183290, "isrc": "GBAHT1901122"},
+    {"id": "t6", "name": "As It Was", "artist": "Harry Styles", "album": "Harry's House", "year": 2022, "genre": "Pop", "duration_ms": 167303, "isrc": "USSM12200612"},
+    {"id": "t7", "name": "Anti-Hero", "artist": "Taylor Swift", "album": "Midnights", "year": 2022, "genre": "Pop", "duration_ms": 200690, "isrc": "USUG12205736"},
+    {"id": "t8", "name": "Heat Waves", "artist": "Glass Animals", "album": "Dreamland", "year": 2020, "genre": "Indie", "duration_ms": 238805, "isrc": "GBUM72000433"},
+    {"id": "t9", "name": "Levitating", "artist": "Dua Lipa", "album": "Future Nostalgia", "year": 2020, "genre": "Disco", "duration_ms": 203064, "isrc": "GBAHT1901298"},
+    {"id": "t10", "name": "Sunflower", "artist": "Post Malone & Swae Lee", "album": "Spider-Man: Into the Spider-Verse", "year": 2018, "genre": "Hip-Hop", "duration_ms": 158040, "isrc": "USUM71816472"},
+    {"id": "t11", "name": "good 4 u", "artist": "Olivia Rodrigo", "album": "SOUR", "year": 2021, "genre": "Pop-Punk", "duration_ms": 178147, "isrc": "USUG12101841"},
+    {"id": "t12", "name": "Starboy", "artist": "The Weeknd", "album": "Starboy", "year": 2016, "genre": "R&B", "duration_ms": 230453, "isrc": "USUG11601012"}
+  ]
+}
