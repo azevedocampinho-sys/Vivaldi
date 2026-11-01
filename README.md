@@ -8,13 +8,20 @@ Estúdio local de mídia no Mac (Gradio · localhost).
 4. **Four Seasons** — criação musical em 4 estações (pré → pós), referências da playlist, CIFRA + partitura ABC
 5. **ZIP** — anexa .zip / .7z / .tar.gz / .gz e descompacta localmente (Lixeira após sucesso)
 
-## Rodar
+## Rodar (sempre no Mac)
 
 ```bash
 ./run.sh
 ```
 
 Abre [http://127.0.0.1:7860](http://127.0.0.1:7860).
+
+O Vivaldi **não sobe na nuvem Cursor como app**: precisa de disco local, Finder, Safari/MusicKit, Ollama, ffmpeg e (opcional) Demucs. Na nuvem fica o **código** (GitHub + ambiente Cursor para editar/PRs), no mesmo espírito do voapet/vagafit.
+
+| Onde | O quê |
+|---|---|
+| **GitHub + Cursor Cloud** | código, docs, PRs, agentes de edição |
+| **Só no Mac** | `.venv` (~1 GB), `.env` (tokens), `zip_out/` / `downloads/`, Ollama, caches Torch |
 
 ## Requisitos
 - Python 3.12 (`brew install python@3.12`)
