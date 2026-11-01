@@ -18,6 +18,7 @@ from four_seasons import studio as fs
 from stems import separator as stems
 from ui.theme import CSS, HEAD, THEME, THEME_CHIP, progress_html
 from youtube import downloader as yt
+from zip_tools import unpacker as zipu
 
 ROOT = Path(__file__).resolve().parent
 AUTH_HTML = ROOT / "static" / "musickit_auth.html"
@@ -89,6 +90,13 @@ HUB_HTML = f"""
         <span class="hub-arrow" aria-hidden="true">→</span>
       </div>
     </div>
+    <div class="hub-portal" data-hub="hub-go-zip" role="button" tabindex="0">
+      <div class="hub-portal-art" aria-hidden="true"></div>
+      <div class="hub-portal-content">
+        <h2 class="hub-title">ZIP</h2>
+        <span class="hub-arrow" aria-hidden="true">→</span>
+      </div>
+    </div>
   </div>
 </div>
 """
@@ -110,6 +118,7 @@ def show_hub():
         gr.update(visible=False),
         gr.update(visible=False),
         gr.update(visible=False),
+        gr.update(visible=False),
     )
 
 
@@ -117,6 +126,7 @@ def show_youtube():
     return (
         gr.update(visible=False),
         gr.update(visible=True),
+        gr.update(visible=False),
         gr.update(visible=False),
         gr.update(visible=False),
         gr.update(visible=False),
@@ -130,6 +140,7 @@ def show_apple():
         gr.update(visible=True),
         gr.update(visible=False),
         gr.update(visible=False),
+        gr.update(visible=False),
     )
 
 
@@ -140,11 +151,24 @@ def show_stems():
         gr.update(visible=False),
         gr.update(visible=True),
         gr.update(visible=False),
+        gr.update(visible=False),
     )
 
 
 def show_four_seasons():
     return (
+        gr.update(visible=False),
+        gr.update(visible=False),
+        gr.update(visible=False),
+        gr.update(visible=False),
+        gr.update(visible=True),
+        gr.update(visible=False),
+    )
+
+
+def show_zip():
+    return (
+        gr.update(visible=False),
         gr.update(visible=False),
         gr.update(visible=False),
         gr.update(visible=False),
@@ -308,6 +332,7 @@ with gr.Blocks(title="Vivaldi") as demo:
             btn_am = gr.Button("Apple Music", elem_id="hub-go-am", elem_classes=["hub-nav-btn"])
             btn_st = gr.Button("Stems", elem_id="hub-go-st", elem_classes=["hub-nav-btn"])
             btn_fs = gr.Button("Four Seasons", elem_id="hub-go-fs", elem_classes=["hub-nav-btn"])
+            btn_zip = gr.Button("ZIP", elem_id="hub-go-zip", elem_classes=["hub-nav-btn"])
 
     # —— YOUTUBE ——
     with gr.Column(visible=False, elem_classes=["yt-studio"]) as yt_view:
@@ -815,8 +840,42 @@ with gr.Blocks(title="Vivaldi") as demo:
             "estética e a IA local (Ollama) no M4. CIFRA + ABC em four_seasons_out/.</p>"
         )
 
+    # —— ZIP ——
+    with gr.Column(visible=False, elem_classes=["zip-studio"]) as zip_view:
+        with gr.Row(elem_classes=["back-row"]):
+            back_zip = gr.Button("← Hub", elem_id="back-zip", elem_classes=["hub-nav-btn"])
+        gr.HTML(_hero(back_id="back-zip"))
+        with gr.Group(elem_classes=["batch-panel"]):
+            zip_file = gr.File(
+                label="Arquivo compactado",
+                file_count="single",
+                type="filepath",
+                file_types=[".zip", ".tar", ".gz", ".tgz", ".bz2", ".xz"],
+            )
+            zip_out = gr.Textbox(label="Pasta de saída", value=str(zipu.DEFAULT_OUT))
+            zip_btn = gr.Button("Descompactar", variant="primary", elem_classes=["batch-cta"])
+        with gr.Row():
+            zip_log = gr.Textbox(
+                label="Resultado",
+                lines=10,
+                interactive=False,
+                elem_classes=["batch-output"],
+            )
+            zip_files = gr.Textbox(
+                label="Arquivos extraídos",
+                lines=10,
+                interactive=False,
+                elem_classes=["batch-output"],
+            )
+        zip_btn.click(fn=zipu.unpack, inputs=[zip_file, zip_out], outputs=[zip_log, zip_files])
+        gr.HTML(
+            f'<p class="batch-foot">Formatos: {zipu.SUPPORTED_LABEL}. '
+            "Extração local com proteção contra path traversal (zip slip). "
+            "Cada arquivo gera uma subpasta em zip_out/.</p>"
+        )
+
     # navigation + auto-update IA ao entrar nos estúdios com IA
-    nav_outs = [hub_view, yt_view, am_view, stems_view, fs_view]
+    nav_outs = [hub_view, yt_view, am_view, stems_view, fs_view, zip_view]
     btn_yt.click(show_youtube, outputs=nav_outs)
     btn_am.click(show_apple, outputs=nav_outs).then(
         ensure_ai_model, am_model, [am_model, am_ai_status]
@@ -829,10 +888,12 @@ with gr.Blocks(title="Vivaldi") as demo:
     btn_fs.click(show_four_seasons, outputs=nav_outs).then(
         fs_sync_refs, outputs=[fs_refs, fs_status]
     )
+    btn_zip.click(show_zip, outputs=nav_outs)
     back_yt.click(show_hub, outputs=nav_outs)
     back_am.click(show_hub, outputs=nav_outs)
     back_st.click(show_hub, outputs=nav_outs)
     back_fs.click(show_hub, outputs=nav_outs)
+    back_zip.click(show_hub, outputs=nav_outs)
 
 
 if __name__ == "__main__":

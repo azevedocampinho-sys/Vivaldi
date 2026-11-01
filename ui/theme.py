@@ -13,6 +13,7 @@ _HUB_ART_FILES = {
     "hub-go-am": "apple-music.jpg",
     "hub-go-st": "stems.jpg",
     "hub-go-fs": "four-seasons.jpg",
+    "hub-go-zip": "zip.jpg",
 }
 
 
