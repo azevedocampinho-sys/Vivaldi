@@ -20,8 +20,14 @@ O Vivaldi **não sobe na nuvem Cursor como app**: precisa de disco local, Finder
 
 | Onde | O quê |
 |---|---|
-| **GitHub + Cursor Cloud** | código, docs, PRs, agentes de edição |
-| **Só no Mac** | `.venv` (~1 GB), `.env` (tokens), `zip_out/` / `downloads/`, Ollama, caches Torch |
+| **GitHub + Cursor Cloud** | código, docs, PRs, agentes de edição (`requirements-cloud.txt` + `.cursor/environment.json`) |
+| **Só no Mac** | `.venv` completo (`requirements.txt` c/ Torch), `.env` (tokens), `zip_out/` / `downloads/`, Ollama |
+
+Para recriar o ambiente local depois de limpar o `.venv`:
+
+```bash
+./run.sh
+```
 
 ## Requisitos
 - Python 3.12 (`brew install python@3.12`)

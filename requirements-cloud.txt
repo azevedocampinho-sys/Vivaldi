@@ -1,0 +1,8 @@
+# Dependências leves para Cloud Agents (edição/PRs).
+# Runtime real do app (Demucs/Torch/Ollama/Finder) fica no Mac.
+yt-dlp>=2025.1.15
+gradio>=5.0.0
+httpx>=0.27.0
+PyJWT[crypto]>=2.8.0
+python-dotenv>=1.0.0
+py7zr>=0.22.0
