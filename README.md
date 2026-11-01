@@ -6,7 +6,7 @@ Estúdio local de mídia no Mac (Gradio · localhost).
 2. **Apple Music** — duplicatas, filtros, IA local; grava playlists limpas via API oficial
 3. **Stems** — HTDemucs local (instrumental / stems)
 4. **Four Seasons** — criação musical em 4 estações (pré → pós), referências da playlist, CIFRA + partitura ABC
-5. **ZIP** — anexa .zip / .tar.gz / .gz e descompacta localmente em `zip_out/`
+5. **ZIP** — anexa .zip / .7z / .tar.gz / .gz e descompacta localmente (Lixeira após sucesso)
 
 ## Rodar
 

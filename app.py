@@ -19,6 +19,8 @@ from stems import separator as stems
 from ui.theme import CSS, HEAD, THEME, THEME_CHIP, progress_html
 from youtube import downloader as yt
 from zip_tools import unpacker as zipu
+from zip_tools.finder_mac import pick_files as zip_pick_files_dialog
+from zip_tools.finder_mac import pick_folder as zip_pick_folder_dialog
 
 ROOT = Path(__file__).resolve().parent
 AUTH_HTML = ROOT / "static" / "musickit_auth.html"
@@ -846,32 +848,57 @@ with gr.Blocks(title="Vivaldi") as demo:
             back_zip = gr.Button("← Hub", elem_id="back-zip", elem_classes=["hub-nav-btn"])
         gr.HTML(_hero(back_id="back-zip"))
         with gr.Group(elem_classes=["batch-panel"]):
+            with gr.Row():
+                zip_path = gr.Textbox(
+                    label="Arquivos no Mac (um caminho por linha)",
+                    placeholder="Clique em 📁 Arquivos… (múltipla seleção) ou cole caminhos",
+                    lines=4,
+                    scale=4,
+                )
+                zip_pick_file = gr.Button("📁 Arquivos…", scale=1)
             zip_file = gr.File(
-                label="Arquivo compactado",
-                file_count="single",
+                label="Upload browser (vários; só arquivos pequenos)",
+                file_count="multiple",
                 type="filepath",
-                file_types=[".zip", ".tar", ".gz", ".tgz", ".bz2", ".xz"],
+                file_types=[".zip", ".7z", ".tar", ".gz", ".tgz", ".bz2", ".xz"],
             )
-            zip_out = gr.Textbox(label="Pasta de saída", value=str(zipu.DEFAULT_OUT))
+            with gr.Row():
+                zip_out = gr.Textbox(
+                    label="Pasta de saída",
+                    value=str(zipu.DEFAULT_OUT),
+                    scale=4,
+                )
+                zip_pick_dir = gr.Button("📁 Pasta…", scale=1)
+            zip_trash = gr.Checkbox(
+                label="Após sucesso, enviar o .zip (ou tar/gz) para a Lixeira",
+                value=True,
+            )
             zip_btn = gr.Button("Descompactar", variant="primary", elem_classes=["batch-cta"])
         with gr.Row():
             zip_log = gr.Textbox(
                 label="Resultado",
-                lines=10,
+                lines=12,
                 interactive=False,
                 elem_classes=["batch-output"],
             )
             zip_files = gr.Textbox(
                 label="Arquivos extraídos",
-                lines=10,
+                lines=12,
                 interactive=False,
                 elem_classes=["batch-output"],
             )
-        zip_btn.click(fn=zipu.unpack, inputs=[zip_file, zip_out], outputs=[zip_log, zip_files])
+        zip_pick_file.click(fn=zip_pick_files_dialog, outputs=zip_path)
+        zip_pick_dir.click(fn=zip_pick_folder_dialog, outputs=zip_out)
+        zip_btn.click(
+            fn=zipu.unpack,
+            inputs=[zip_file, zip_out, zip_path, zip_trash],
+            outputs=[zip_log, zip_files],
+        )
         gr.HTML(
             f'<p class="batch-foot">Formatos: {zipu.SUPPORTED_LABEL}. '
-            "Extração local com proteção contra path traversal (zip slip). "
-            "Cada arquivo gera uma subpasta em zip_out/.</p>"
+            "Vários de uma vez via 📁 Arquivos…. "
+            "Arquivos grandes: use o Finder (não o upload). "
+            "Sucesso → Lixeira (recuperável). Proteção zip-slip ativa.</p>"
         )
 
     # navigation + auto-update IA ao entrar nos estúdios com IA
